@@ -34,6 +34,21 @@ test("POST /api/compare requires both files", async () => {
   assert.match(res.body.error, /upload both/i);
 });
 
+test("files over the upload limit return 413", async () => {
+  const app = makeApp({
+    config: { maxUploadBytes: 2 }
+  });
+
+  const res = await postCompare(app, {
+    left: { data: Buffer.from("xxx"), name: "big.pdf", type: "application/pdf" },
+    right: { data: Buffer.from("y"), name: "small.pdf", type: "application/pdf" }
+  });
+
+  assert.equal(res.status, 413);
+  assert.match(res.body.error, /file too large/i);
+  assert.match(res.body.error, /max upload size/i);
+});
+
 test("structured schema must be valid JSON", async () => {
   const app = makeApp({
     createPulseClient: () => ({
@@ -221,7 +236,7 @@ test("unsupported file type returns 400 with a helpful message", async () => {
   });
 
   assert.equal(res.status, 400);
-  assert.equal(typeof res.body.error, "string");
+  assert.match(res.body.error, /unsupported file type/i);
 });
 
 test("corrupted document returns 400", async () => {

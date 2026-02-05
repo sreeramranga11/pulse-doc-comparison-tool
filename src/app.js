@@ -20,8 +20,6 @@ class HttpError extends Error {
 const WORD_RE = /[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*/gu;
 
 export const createApp = (overrides = {}) => {
-  const upload = multer({ storage: multer.memoryStorage() });
-
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const rootDir = path.resolve(__dirname, "..");
 
@@ -36,8 +34,14 @@ export const createApp = (overrides = {}) => {
       1,
       Number(process.env.PULSE_LARGE_FILE_THRESHOLD_MB || 10) * 1024 * 1024
     ),
+    maxUploadBytes: Math.max(1, Number(process.env.PULSE_MAX_UPLOAD_MB || 50) * 1024 * 1024),
     ...overrides.config
   };
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: config.maxUploadBytes }
+  });
 
   const openaiConfig = {
     apiKey: process.env.OPENAI_API_KEY || "",
@@ -172,6 +176,66 @@ export const createApp = (overrides = {}) => {
     });
   };
 
+  const normalizePulseFailure = ({ statusCode, body, message }) => {
+    const rawMessage = String(message || "").trim();
+    const codeFromBody = body?.error?.code;
+    const codeFromMessage = rawMessage.match(/\b(FILE_\d{3}|AUTH_\d{3})\b/)?.[1];
+    const code = codeFromBody || codeFromMessage || null;
+
+    if (code === "FILE_001") {
+      return {
+        status: 400,
+        message:
+          "Unsupported file type. Please upload a Pulse-supported document (PDF, DOCX, PPTX, XLSX, JPG, PNG, etc.)."
+      };
+    }
+    if (code === "FILE_002") {
+      return {
+        status: 413,
+        message:
+          "File too large to process. Try a smaller file, split the document, or reduce image resolution."
+      };
+    }
+    if (code === "FILE_003") {
+      return {
+        status: 400,
+        message:
+          "File appears corrupted or unreadable. Try re-exporting/re-saving the document and upload again."
+      };
+    }
+    if (code === "AUTH_001") {
+      return {
+        status: 500,
+        message: "Pulse API key is required. Set PULSE_API_KEY in .env and restart the server."
+      };
+    }
+
+    const sc = typeof statusCode === "number" ? statusCode : null;
+    if (sc === 401 || sc === 403) {
+      return {
+        status: 500,
+        message: "Pulse authentication failed. Check that PULSE_API_KEY is set and valid."
+      };
+    }
+    if (sc === 404) {
+      return {
+        status: 502,
+        message: "Pulse endpoint not found. Check PULSE_BASE_URL and try again."
+      };
+    }
+    if (sc && sc >= 500) {
+      return {
+        status: 502,
+        message: "Pulse API is temporarily unavailable. Please try again."
+      };
+    }
+
+    if (sc && sc >= 400 && sc < 500) {
+      return { status: sc, message: rawMessage || "Pulse request failed." };
+    }
+    return { status: 502, message: rawMessage || "Pulse request failed." };
+  };
+
   const pollForResult = async (client, jobId) => {
     const deadline = Date.now() + config.pollTimeoutMs;
     while (Date.now() < deadline) {
@@ -184,7 +248,12 @@ export const createApp = (overrides = {}) => {
         return payload;
       }
       if (status === "failed" || status === "canceled") {
-        throw new HttpError(502, payload.error || "Pulse extraction failed");
+        const normalized = normalizePulseFailure({
+          statusCode: null,
+          body: null,
+          message: payload.error || "Pulse extraction failed"
+        });
+        throw new HttpError(normalized.status, normalized.message);
       }
       await sleep(config.pollIntervalMs);
     }
@@ -247,13 +316,20 @@ export const createApp = (overrides = {}) => {
           message: error.message,
           body: error.body
         });
-        const statusCode = typeof error.statusCode === "number" ? error.statusCode : 502;
-        const status = statusCode >= 500 ? 502 : statusCode;
-        throw new HttpError(status, error.message || "Pulse extraction failed");
+        const normalized = normalizePulseFailure({
+          statusCode: error.statusCode,
+          body: error.body,
+          message: error.message
+        });
+        throw new HttpError(normalized.status, normalized.message);
       }
       if (typeof error?.statusCode === "number") {
-        const status = error.statusCode >= 500 ? 502 : error.statusCode;
-        throw new HttpError(status, error.message || "Upstream request failed");
+        const normalized = normalizePulseFailure({
+          statusCode: error.statusCode,
+          body: error.body,
+          message: error.message
+        });
+        throw new HttpError(normalized.status, normalized.message);
       }
       throw error;
     }
@@ -745,6 +821,30 @@ export const createApp = (overrides = {}) => {
       }
     }
   );
+
+  app.use((error, _req, res, next) => {
+    if (!error) return next();
+    if (res.headersSent) return next(error);
+
+    if (error instanceof multer.MulterError || error?.name === "MulterError") {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        const maxMb = Math.ceil(config.maxUploadBytes / (1024 * 1024));
+        return res.status(413).json({
+          error: `File too large. Max upload size is ${maxMb}MB per file (configure via PULSE_MAX_UPLOAD_MB).`
+        });
+      }
+      if (error.code === "LIMIT_UNEXPECTED_FILE") {
+        return res.status(400).json({ error: "Unexpected file field. Please upload both documents." });
+      }
+      return res.status(400).json({ error: "Upload failed. Please try again." });
+    }
+
+    if (error instanceof HttpError && typeof error.status === "number") {
+      return res.status(error.status).json({ error: error.message || "Request failed." });
+    }
+
+    return res.status(500).json({ error: error?.message || "Unexpected error occurred" });
+  });
 
   return { app, config, openaiConfig, HttpError };
 };

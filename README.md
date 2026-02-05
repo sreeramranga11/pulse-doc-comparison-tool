@@ -28,6 +28,8 @@ review differences side-by-side with highlighted changes.
    PULSE_DEBUG_LOGS=true
    # Automatically switches to async when either upload is >= this threshold
    PULSE_LARGE_FILE_THRESHOLD_MB=10
+   # Upload hard limit per file (multer); protects server memory
+   PULSE_MAX_UPLOAD_MB=50
    ```
 4. (Optional) Enable AI-powered insights (recommended):
    ```bash
