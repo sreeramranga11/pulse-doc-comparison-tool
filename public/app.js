@@ -535,28 +535,78 @@ form.addEventListener("submit", async (event) => {
       renderConfidence(insightsConfidenceEl, result.confidence);
     }
 
-    const structuredTotal = Number(data.structuredDiff?.total || 0);
-    if (structuredDiffCountEl) {
-      structuredDiffCountEl.textContent = `${structuredTotal} change${structuredTotal === 1 ? "" : "s"}`;
-    }
+    const isCitationPath = (path) => {
+      const p = String(path || "");
+      return p === "citations" || p.startsWith("citations.") || p.startsWith("citations[");
+    };
+
+    const formatStructuredValue = (value) => {
+      if (value === null || value === undefined) return "—";
+      if (typeof value === "string") return value;
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    };
+
+    const normalizeStructuredPath = (path) => {
+      const p = String(path || "");
+      if (!p) return "(root)";
+      if (p === "values") return "(values)";
+      if (p.startsWith("values.")) return p.slice("values.".length);
+      return p;
+    };
+
     if (structuredDiffRowsEl) {
       structuredDiffRowsEl.innerHTML = "";
-      const changes = data.structuredDiff?.changes || [];
-      const breakdown = changes.reduce((acc, change) => {
+      const allChanges = data.structuredDiff?.changes || [];
+      const visibleChanges = allChanges.filter((change) => !isCitationPath(change?.path));
+      const hiddenCitations = Math.max(0, allChanges.length - visibleChanges.length);
+
+      const breakdown = visibleChanges.reduce((acc, change) => {
         const key = change?.type || "changed";
         acc[key] = (acc[key] || 0) + 1;
         return acc;
       }, {});
       if (structuredDiffCountEl) {
+        const structuredTotal = visibleChanges.length;
+        structuredDiffCountEl.textContent = `${structuredTotal} change${structuredTotal === 1 ? "" : "s"}`;
         const breakdownText = ["added", "removed", "changed"]
           .filter((key) => breakdown[key])
           .map((key) => `${breakdown[key]} ${key}`)
           .join(", ");
-        structuredDiffCountEl.title = breakdownText || "";
+        const extra = hiddenCitations ? `Hidden evidence refs: ${hiddenCitations}` : "";
+        structuredDiffCountEl.title = [breakdownText, extra].filter(Boolean).join(" • ");
       }
 
       const maxRows = 50;
-      changes.slice(0, maxRows).forEach((change) => {
+      if (!visibleChanges.length) {
+        const row = document.createElement("div");
+        row.className = "table-row";
+
+        const field = document.createElement("div");
+        field.className = "cell-mono";
+        field.textContent = hiddenCitations
+          ? "No value changes detected (evidence refs hidden)."
+          : "No value changes detected.";
+
+        const left = document.createElement("div");
+        left.className = "cell-mono";
+        left.textContent = "";
+
+        const right = document.createElement("div");
+        right.className = "cell-mono";
+        right.textContent = "";
+
+        row.appendChild(field);
+        row.appendChild(left);
+        row.appendChild(right);
+        structuredDiffRowsEl.appendChild(row);
+      }
+
+      visibleChanges.slice(0, maxRows).forEach((change) => {
         const row = document.createElement("div");
         row.className = "table-row";
 
@@ -569,24 +619,18 @@ form.addEventListener("submit", async (event) => {
 
         const path = document.createElement("div");
         path.className = "cell-path";
-        path.textContent = change.path || "(root)";
+        path.textContent = normalizeStructuredPath(change.path);
 
         field.appendChild(badge);
         field.appendChild(path);
 
         const left = document.createElement("div");
         left.className = "cell-mono";
-        left.textContent =
-          change.left === null ? "—" : typeof change.left === "string" ? change.left : JSON.stringify(change.left);
+        left.textContent = formatStructuredValue(change.left);
 
         const right = document.createElement("div");
         right.className = "cell-mono";
-        right.textContent =
-          change.right === null
-            ? "—"
-            : typeof change.right === "string"
-              ? change.right
-              : JSON.stringify(change.right);
+        right.textContent = formatStructuredValue(change.right);
 
         row.appendChild(field);
         row.appendChild(left);
@@ -594,10 +638,10 @@ form.addEventListener("submit", async (event) => {
         structuredDiffRowsEl.appendChild(row);
       });
 
-      if (structuredTotal > maxRows) {
+      if (visibleChanges.length > maxRows) {
         const row = document.createElement("div");
         row.className = "kv";
-        row.textContent = `Showing ${maxRows} of ${structuredTotal} structured changes.`;
+        row.textContent = `Showing ${maxRows} of ${visibleChanges.length} structured changes.`;
         structuredDiffRowsEl.appendChild(row);
       }
     }
