@@ -13,20 +13,12 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="navbar">
-      <div class="navbar-inner">
-        <a class="brand" href="/" aria-label="Pulse Document Comparison home">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 20 20" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M4 4h3v3H4V4Zm5 0h3v3H9V4Zm5 0h2v3h-2V4ZM4 9h3v3H4V9Zm5 0h3v3H9V9Zm5 0h2v3h-2V9ZM4 14h3v2H4v-2Zm5 0h3v2H9v-2Zm5 0h2v2h-2v-2Z"
-                fill="currentColor"
-              />
-            </svg>
-          </span>
-          <span class="brand-name">Pulse</span>
-          <span class="brand-subtitle">Document Comparison</span>
-        </a>
+	    <header class="navbar">
+	      <div class="navbar-inner">
+	        <a class="brand" href="/" aria-label="Pulse Document Comparison home">
+	          <span class="brand-name">Pulse</span>
+	          <span class="brand-subtitle">Document Comparison</span>
+	        </a>
 
         <div class="nav-actions"></div>
       </div>
@@ -60,7 +52,7 @@
             </div>
 
             <form id="compare-form" class="grid">
-              <div class="input-card input-wide">
+              <div class="input-card input-wide options-card">
                 <h3>Comparison options</h3>
                 <p class="muted">Choose a diff mode and optionally extract structured fields.</p>
 
@@ -121,12 +113,12 @@
                   ></textarea>
                 </div>
               </div>
-              <div class="input-card">
+              <div class="input-card file-card">
                 <h3>Document A</h3>
                 <p class="muted">Original version</p>
                 <input id="left-file" name="left" type="file" required />
               </div>
-              <div class="input-card">
+              <div class="input-card file-card">
                 <h3>Document B</h3>
                 <p class="muted">Revised version</p>
                 <input id="right-file" name="right" type="file" required />
@@ -251,7 +243,7 @@
               </details>
 
               <details class="card" id="structured">
-                <summary>Structured output (optional)</summary>
+                <summary>Structured output</summary>
                 <div class="structured-diff">
                   <div class="structured-diff-header">
                     <div class="muted">Field-level changes from structured extraction (values only).</div>
