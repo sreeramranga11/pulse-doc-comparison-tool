@@ -55,8 +55,9 @@ const createPulseClient = (debugLogs) => {
   }
   logDebug(debugLogs, "Initializing Pulse SDK client", { baseUrl: config.baseUrl });
   return new PulseClient({
+    headers: { "x-api-key": config.apiKey },
     apiKey: config.apiKey,
-    baseUrl: config.baseUrl
+    baseUrl: config.baseUrl,
   });
 };
 
