@@ -94,7 +94,9 @@ What’s covered in `tests/`:
 
 Optional real-Pulse integration test:
 ```bash
-RUN_INTEGRATION_TESTS=true PULSE_API_KEY=... npm test
+RUN_INTEGRATION_TESTS=true
+PULSE_API_KEY=...
+npm test
 ```
 
 ## Design decisions & tradeoffs
