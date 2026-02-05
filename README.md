@@ -106,7 +106,11 @@ RUN_INTEGRATION_TESTS=true PULSE_API_KEY=... npm test
   For layout-aware comparisons, use structured extraction and field-level diffs.
 
 ## Example output
+You can see the videos in higher quality in the `output_examples` directory.
 
+https://github.com/user-attachments/assets/fb983d92-aa2b-42ef-91e3-2cec7b307ba9
+
+https://github.com/user-attachments/assets/14903f58-c2b2-484b-a613-9bec38ddc51d
 
 ## What I’d improve with more time
 - Visual PDF diff overlays for precise layout comparison.
