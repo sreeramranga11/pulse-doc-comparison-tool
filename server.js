@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import dotenv from "dotenv";
 import { diffWordsWithSpace } from "diff";
+import { PulseClient, PulseError } from "pulse-ts-sdk";
 
 dotenv.config();
 
@@ -10,12 +11,12 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const config = {
   port: process.env.PORT || 3000,
-  baseUrl: process.env.PULSE_BASE_URL || "https://api.runpulse.com/v1",
-  extractEndpoint: process.env.PULSE_EXTRACT_ENDPOINT || "/documents/extract",
+  baseUrl: process.env.PULSE_BASE_URL || "https://api.runpulse.com",
   apiKey: process.env.PULSE_API_KEY || "",
   debugEnabled: (process.env.PULSE_DEBUG_LOGS || "true").toLowerCase() === "true",
   pollIntervalMs: Number(process.env.PULSE_POLL_INTERVAL_MS || 2000),
-  pollTimeoutMs: Number(process.env.PULSE_POLL_TIMEOUT_MS || 60000)
+  pollTimeoutMs: Number(process.env.PULSE_POLL_TIMEOUT_MS || 60000),
+  useAsync: (process.env.PULSE_USE_ASYNC || "true").toLowerCase() === "true"
 };
 
 const logDebug = (collector, ...messages) => {
@@ -27,18 +28,12 @@ const logDebug = (collector, ...messages) => {
   console.log("[debug]", ...messages);
 };
 
-const buildExtractUrl = () => {
-  if (config.extractEndpoint.startsWith("http")) {
-    return config.extractEndpoint;
-  }
-  return `${config.baseUrl.replace(/\/$/, "")}${config.extractEndpoint}`;
-};
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const extractTextFromPayload = (payload) => {
   if (!payload) return "";
   return (
+    payload.content ||
     payload.text ||
     payload.content ||
     payload.markdown ||
@@ -47,30 +42,37 @@ const extractTextFromPayload = (payload) => {
     payload?.document?.markdown ||
     payload?.result?.text ||
     payload?.result?.content ||
+    payload?.result?.markdown ||
     payload?.output?.text ||
     payload?.output?.content ||
     ""
   );
 };
 
-const pollForResult = async (statusUrl, debugLogs) => {
+const createPulseClient = (debugLogs) => {
+  if (!config.apiKey) {
+    throw new Error("Missing PULSE_API_KEY environment variable");
+  }
+  logDebug(debugLogs, "Initializing Pulse SDK client", { baseUrl: config.baseUrl });
+  return new PulseClient({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl
+  });
+};
+
+const pollForResult = async (client, jobId, debugLogs) => {
   const deadline = Date.now() + config.pollTimeoutMs;
   while (Date.now() < deadline) {
-    logDebug(debugLogs, "Polling status", statusUrl);
-    const response = await fetch(statusUrl, {
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`
-      }
-    });
-    const payload = await response.json();
+    logDebug(debugLogs, "Polling job status", jobId);
+    const payload = await client.jobs.getJob({ jobId });
     logDebug(debugLogs, "Poll response", payload);
 
-    const status = payload.status || payload.state || payload?.document?.status;
-    if (status === "completed" || status === "succeeded" || payload.result) {
+    const status = payload.status;
+    if (status === "completed" || payload.result) {
       return payload;
     }
-    if (status === "failed" || status === "error") {
-      throw new Error(payload.message || "Pulse extraction failed");
+    if (status === "failed" || status === "canceled") {
+      throw new Error(payload.error || "Pulse extraction failed");
     }
     await sleep(config.pollIntervalMs);
   }
@@ -78,49 +80,50 @@ const pollForResult = async (statusUrl, debugLogs) => {
 };
 
 const extractDocument = async (file, debugLogs) => {
-  if (!config.apiKey) {
-    throw new Error("Missing PULSE_API_KEY environment variable");
-  }
-
-  const url = buildExtractUrl();
-  logDebug(debugLogs, "Submitting extraction request", { url, name: file.originalname });
-
-  const formData = new FormData();
-  formData.append("file", new Blob([file.buffer]), file.originalname);
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`
-    },
-    body: formData
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    logDebug(debugLogs, "Extraction error response", errorText);
-    throw new Error(`Pulse extraction failed (${response.status})`);
-  }
-
-  const payload = await response.json();
-  logDebug(debugLogs, "Extraction response", payload);
-
-  const statusUrl = payload.statusUrl || payload.status_url || payload.polling_url;
-  const status = payload.status || payload.state || payload?.document?.status;
-
-  if (statusUrl || (status && status !== "completed" && status !== "succeeded")) {
-    const pollUrl = statusUrl || `${config.baseUrl.replace(/\/$/, "")}/documents/${payload.id}`;
-    const finalPayload = await pollForResult(pollUrl, debugLogs);
-    return {
-      payload: finalPayload,
-      text: extractTextFromPayload(finalPayload)
-    };
-  }
-
-  return {
-    payload,
-    text: extractTextFromPayload(payload)
+  const client = createPulseClient(debugLogs);
+  const fileUpload = {
+    data: file.buffer,
+    filename: file.originalname,
+    contentType: file.mimetype
   };
+
+  try {
+    if (config.useAsync) {
+      logDebug(debugLogs, "Submitting async extraction request", {
+        name: file.originalname
+      });
+      const job = await client.extractAsync({ file: fileUpload });
+      logDebug(debugLogs, "Async job enqueued", job);
+      const finalPayload = await pollForResult(client, job.job_id, debugLogs);
+      const resultPayload = finalPayload.result || finalPayload;
+      return {
+        payload: resultPayload,
+        text: extractTextFromPayload(resultPayload),
+        structuredOutput: resultPayload?.structured_output
+      };
+    }
+
+    logDebug(debugLogs, "Submitting sync extraction request", {
+      name: file.originalname
+    });
+    const payload = await client.extract({ file: fileUpload });
+    logDebug(debugLogs, "Extraction response", payload);
+    return {
+      payload,
+      text: extractTextFromPayload(payload),
+      structuredOutput: payload?.structured_output
+    };
+  } catch (error) {
+    if (error instanceof PulseError) {
+      logDebug(debugLogs, "Pulse SDK error", {
+        status: error.statusCode,
+        message: error.message,
+        body: error.body
+      });
+      throw new Error(error.message);
+    }
+    throw error;
+  }
 };
 
 const buildDiffHtml = (diffParts) => {
@@ -210,6 +213,10 @@ app.post(
         extracted: {
           left: leftResult.text,
           right: rightResult.text
+        },
+        structuredOutput: {
+          left: leftResult.structuredOutput || null,
+          right: rightResult.structuredOutput || null
         },
         debug: debugLogs
       });

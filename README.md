@@ -6,7 +6,7 @@ review differences side-by-side with highlighted changes.
 
 ## Approach
 - **Single-page UI** in plain HTML/CSS/JS for fast iteration and easy deployment.
-- **Node/Express API** for secure Pulse API calls and diff generation.
+- **Node/Express API** powered by the official Pulse SDK for secure API calls and diff generation.
 - **Word-level diffing** using the `diff` library to highlight additions/removals.
 - **Debug-first workflow** with server/client logs enabled by default and easy toggles.
 
@@ -19,11 +19,11 @@ review differences side-by-side with highlighted changes.
    ```bash
    PULSE_API_KEY=your_key_here
    ```
-3. (Optional) Override Pulse endpoints if your account uses different routes:
+3. (Optional) Override Pulse endpoints or behavior:
    ```bash
-   PULSE_BASE_URL=https://api.runpulse.com/v1
-   PULSE_EXTRACT_ENDPOINT=/documents/extract
+   PULSE_BASE_URL=https://api.runpulse.com
    PULSE_DEBUG_LOGS=true
+   PULSE_USE_ASYNC=true
    ```
 4. Start the server:
    ```bash
@@ -70,6 +70,5 @@ The agreement becomes <added>effective on March 1st</added> and
 
 ## Troubleshooting
 - Ensure `PULSE_API_KEY` is set.
-- If your Pulse account uses different routes, update `PULSE_BASE_URL` and
-  `PULSE_EXTRACT_ENDPOINT`.
+- If your Pulse account uses different routes, update `PULSE_BASE_URL`.
 - Disable debug logs via `PULSE_DEBUG_LOGS=false`.

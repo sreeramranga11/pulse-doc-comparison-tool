@@ -8,6 +8,8 @@ const diffRight = document.getElementById("diff-right");
 const diffInline = document.getElementById("diff-inline");
 const extractLeft = document.getElementById("extract-left");
 const extractRight = document.getElementById("extract-right");
+const structuredLeft = document.getElementById("structured-left");
+const structuredRight = document.getElementById("structured-right");
 const debugPanel = document.getElementById("debug-panel");
 const debugLogsEl = document.getElementById("debug-logs");
 const debugToggle = document.getElementById("debug-toggle");
@@ -41,6 +43,8 @@ const resetResults = () => {
   diffInline.innerHTML = "";
   extractLeft.textContent = "";
   extractRight.textContent = "";
+  structuredLeft.textContent = "";
+  structuredRight.textContent = "";
 };
 
 const toggleDebugPanel = () => {
@@ -101,6 +105,13 @@ form.addEventListener("submit", async (event) => {
 
     extractLeft.textContent = data.extracted.left || "No text returned.";
     extractRight.textContent = data.extracted.right || "No text returned.";
+
+    structuredLeft.textContent = data.structuredOutput?.left
+      ? JSON.stringify(data.structuredOutput.left, null, 2)
+      : "No structured output returned.";
+    structuredRight.textContent = data.structuredOutput?.right
+      ? JSON.stringify(data.structuredOutput.right, null, 2)
+      : "No structured output returned.";
 
     if (data.debug?.length) {
       data.debug.forEach((entry) => logClient(entry));
