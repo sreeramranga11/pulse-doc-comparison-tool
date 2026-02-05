@@ -21,7 +21,10 @@ const config = {
   debugEnabled: (process.env.PULSE_DEBUG_LOGS || "true").toLowerCase() === "true",
   pollIntervalMs: Number(process.env.PULSE_POLL_INTERVAL_MS || 2000),
   pollTimeoutMs: Number(process.env.PULSE_POLL_TIMEOUT_MS || 60000),
-  useAsync: (process.env.PULSE_USE_ASYNC || "true").toLowerCase() === "true"
+  largeFileThresholdBytes: Math.max(
+    1,
+    Number(process.env.PULSE_LARGE_FILE_THRESHOLD_MB || 10) * 1024 * 1024
+  )
 };
 
 const openaiConfig = {
@@ -74,6 +77,69 @@ const extractTextFromPayload = (payload) => {
   );
 };
 
+const fetchJsonWithTimeout = async (url, timeoutMs = 20000) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Failed to fetch result (${response.status} ${response.statusText})`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("Result URL did not return valid JSON");
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const resolveUrlBackedResult = async (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+
+  const url =
+    payload.url ||
+    payload.result?.url ||
+    payload.output?.url ||
+    payload?.data?.url ||
+    "";
+
+  const isUrlBacked = payload.is_url === true || payload.isUrl === true;
+  if (!url || (typeof url !== "string")) return payload;
+
+  if (!isUrlBacked && !url.startsWith("https://")) {
+    return payload;
+  }
+
+  if (!url.startsWith("https://")) {
+    throw new Error("Pulse result URL must be https");
+  }
+
+  let safeUrlForLogs = url;
+  try {
+    const parsed = new URL(url);
+    safeUrlForLogs = `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    safeUrlForLogs = url.slice(0, 80);
+  }
+  logDebug("Fetching URL-backed extraction result", { url: safeUrlForLogs });
+  const resolved = await fetchJsonWithTimeout(url);
+  if (!resolved || typeof resolved !== "object") return payload;
+
+  return {
+    ...resolved,
+    extraction_url: resolved.extraction_url ?? payload.extraction_url ?? null,
+    page_count: resolved.page_count ?? payload.page_count ?? null,
+    url
+  };
+};
+
 const createPulseClient = () => {
   if (!config.apiKey) {
     throw new Error("Missing PULSE_API_KEY environment variable");
@@ -105,7 +171,16 @@ const pollForResult = async (client, jobId) => {
   throw new Error("Pulse extraction timed out while polling");
 };
 
-const extractDocument = async (file, structuredOutput) => {
+const getFileSizeBytes = (file) => {
+  if (!file) return 0;
+  if (typeof file.size === "number") return file.size;
+  if (file.buffer && typeof file.buffer.length === "number") return file.buffer.length;
+  return 0;
+};
+
+const isLargeFile = (file) => getFileSizeBytes(file) >= config.largeFileThresholdBytes;
+
+const extractDocument = async (file, structuredOutput, useAsync) => {
   const client = createPulseClient();
   const fileUpload = {
     data: file.buffer,
@@ -114,7 +189,7 @@ const extractDocument = async (file, structuredOutput) => {
   };
 
   try {
-    if (config.useAsync) {
+    if (useAsync) {
       logDebug("Submitting async extraction request", {
         name: file.originalname
       });
@@ -124,7 +199,7 @@ const extractDocument = async (file, structuredOutput) => {
       });
       logDebug("Async job enqueued", job);
       const finalPayload = await pollForResult(client, job.job_id);
-      const resultPayload = finalPayload.result || finalPayload;
+      const resultPayload = await resolveUrlBackedResult(finalPayload.result || finalPayload);
       return {
         payload: resultPayload,
         text: extractTextFromPayload(resultPayload),
@@ -616,16 +691,27 @@ app.post(
       const diffMode = (req.body?.diff_mode || "words").toString().toLowerCase();
       const structuredOutput = parseStructuredOutput(req);
 
+      const useAsyncLeft = isLargeFile(leftFile);
+      const useAsyncRight = isLargeFile(rightFile);
+
       logDebug("Starting comparison", {
         left: leftFile.originalname,
         right: rightFile.originalname,
         diffMode,
-        structured: Boolean(structuredOutput)
+        structured: Boolean(structuredOutput),
+        extractionMode: {
+          left: useAsyncLeft ? "async" : "sync",
+          right: useAsyncRight ? "async" : "sync"
+        },
+        largeDetected: {
+          left: useAsyncLeft,
+          right: useAsyncRight
+        }
       });
 
       const [leftResult, rightResult] = await Promise.all([
-        extractDocument(leftFile, structuredOutput),
-        extractDocument(rightFile, structuredOutput)
+        extractDocument(leftFile, structuredOutput, useAsyncLeft),
+        extractDocument(rightFile, structuredOutput, useAsyncRight)
       ]);
 
       const diffParts =

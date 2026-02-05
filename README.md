@@ -26,7 +26,8 @@ review differences side-by-side with highlighted changes.
    ```bash
    PULSE_BASE_URL=https://api.runpulse.com
    PULSE_DEBUG_LOGS=true
-   PULSE_USE_ASYNC=true
+   # Automatically switches to async when either upload is >= this threshold
+   PULSE_LARGE_FILE_THRESHOLD_MB=10
    ```
 4. (Optional) Enable AI-powered insights (recommended):
    ```bash
@@ -55,6 +56,7 @@ review differences side-by-side with highlighted changes.
 - **Server-side extraction & diffing** keeps API keys private and allows clean error
   handling.
 - **Polling support** keeps large-file extraction responsive.
+- **Auto async threshold:** The default `PULSE_LARGE_FILE_THRESHOLD_MB=10` is a practical rule-of-thumb (and what Pulse’s API assistant suggested as an “industry standard” cutoff) for switching to async when files get big; it also matches Pulse docs/examples that recommend direct upload for files under 10MB.
 - **Text diff is content-first** (word/line) and may not reflect layout-only changes.
   For layout-aware comparisons, use structured extraction and field-level diffs.
 
