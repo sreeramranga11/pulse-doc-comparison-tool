@@ -33,8 +33,8 @@
 
       <div class="tabs-inner" role="navigation" aria-label="Sections">
         <a class="tab is-active" href="#upload" id="tab-upload">Upload</a>
-        <a class="tab" href="#side-by-side" id="tab-side" data-requires-results="true">Side-by-side</a>
         <a class="tab" href="#inline" id="tab-inline" data-requires-results="true">Inline diff</a>
+        <a class="tab" href="#side-by-side" id="tab-side" data-requires-results="true">Side-by-side</a>
       </div>
     </header>
 
@@ -59,14 +59,75 @@
             </div>
 
             <form id="compare-form" class="grid">
+              <div class="input-card input-wide">
+                <h3>Comparison options</h3>
+                <p class="muted">Choose a diff mode and optionally extract structured fields.</p>
+
+                <div class="options">
+                  <div class="option">
+                    <div class="option-label">Diff mode</div>
+                    <div class="segmented" role="radiogroup" aria-label="Diff mode">
+                      <label class="segmented-item">
+                        <input type="radio" name="diff_mode" value="words" checked />
+                        <span>Word</span>
+                      </label>
+                      <label class="segmented-item">
+                        <input type="radio" name="diff_mode" value="lines" />
+                        <span>Line</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="option">
+                    <label class="check">
+                      <input id="structured-enabled" type="checkbox" />
+                      <span>
+                        <span class="check-title">Structured extraction</span>
+                        <span class="muted">Extract and compare fields using a JSON schema.</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div id="structured-config" class="structured hidden" aria-label="Structured extraction settings">
+                  <div class="structured-row">
+                    <div>
+                      <div class="option-label">Preset</div>
+                      <select id="structured-preset" class="select">
+                        <option value="custom">Custom</option>
+                        <option value="contract">Contract (basic)</option>
+                        <option value="invoice">Invoice (basic)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div class="option-label">Schema prompt (optional)</div>
+                      <input
+                        id="structured-prompt"
+                        class="text-input"
+                        type="text"
+                        placeholder="e.g. Focus on payment terms, dates, and parties. Format dates as YYYY-MM-DD."
+                      />
+                    </div>
+                  </div>
+
+                  <div class="option-label">Schema (JSON)</div>
+                  <textarea
+                    id="structured-schema"
+                    class="textarea"
+                    rows="10"
+                    spellcheck="false"
+                    placeholder='{"type":"object","properties":{"document_title":{"type":"string"}}, "required":["document_title"]}'
+                  ></textarea>
+                </div>
+              </div>
               <div class="input-card">
                 <h3>Document A</h3>
-                <p class="muted">Original version.</p>
+                <p class="muted">Original version</p>
                 <input id="left-file" name="left" type="file" required />
               </div>
               <div class="input-card">
                 <h3>Document B</h3>
-                <p class="muted">Revised version.</p>
+                <p class="muted">Revised version</p>
                 <input id="right-file" name="right" type="file" required />
               </div>
               <div class="actions">
@@ -97,18 +158,47 @@
                 </div>
                 <div class="summary-grid">
                   <div class="stat">
-                    <h3>Insertions</h3>
+                    <h3 id="summary-additions-label">Words added</h3>
                     <p id="summary-additions" class="summary-value">0</p>
                   </div>
                   <div class="stat">
-                    <h3>Removals</h3>
+                    <h3 id="summary-removals-label">Words removed</h3>
                     <p id="summary-removals" class="summary-value">0</p>
                   </div>
                   <div class="stat">
-                    <h3>Diff Parts</h3>
+                    <h3 id="summary-total-label">Diff chunks</h3>
                     <p id="summary-total" class="summary-value">0</p>
                   </div>
                 </div>
+              </div>
+
+              <div class="card" id="insights">
+                <div class="card-header">
+                  <div>
+                    <h2>Insights</h2>
+                    <p class="muted">What changed (numbers, dates, links, and more).</p>
+                  </div>
+                </div>
+                <div class="insights-grid">
+                  <div class="insight">
+                    <div class="insight-title">Added</div>
+                    <div class="insight-list" id="insights-added"></div>
+                  </div>
+                  <div class="insight">
+                    <div class="insight-title">Removed</div>
+                    <div class="insight-list" id="insights-removed"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card diff-card" id="inline">
+                <div class="card-header">
+                  <div>
+                    <h2>Inline</h2>
+                    <p class="muted">Combined view of additions and removals.</p>
+                  </div>
+                </div>
+                <div id="diff-inline" class="diff-panel" aria-label="Inline diff"></div>
               </div>
 
               <div class="card diff-card" id="side-by-side">
@@ -130,16 +220,6 @@
                 </div>
               </div>
 
-              <div class="card diff-card" id="inline">
-                <div class="card-header">
-                  <div>
-                    <h2>Inline</h2>
-                    <p class="muted">Combined view of additions and removals.</p>
-                  </div>
-                </div>
-                <div id="diff-inline" class="diff-panel" aria-label="Inline diff"></div>
-              </div>
-
               <details class="card" id="extracted">
                 <summary>Extracted text</summary>
                 <div class="diff-grid">
@@ -150,6 +230,20 @@
 
               <details class="card" id="structured">
                 <summary>Structured output (optional)</summary>
+                <div class="structured-diff">
+                  <div class="structured-diff-header">
+                    <div class="muted">Field-level changes from structured extraction.</div>
+                    <div class="pill" id="structured-diff-count">0 changes</div>
+                  </div>
+                  <div class="table" role="table" aria-label="Structured field differences">
+                    <div class="table-head" role="row">
+                      <div role="columnheader">Field</div>
+                      <div role="columnheader">Document A</div>
+                      <div role="columnheader">Document B</div>
+                    </div>
+                    <div class="table-body" id="structured-diff-rows" role="rowgroup"></div>
+                  </div>
+                </div>
                 <div class="diff-grid">
                   <pre id="structured-left" class="text-panel" aria-label="Structured output for Document A"></pre>
                   <pre id="structured-right" class="text-panel" aria-label="Structured output for Document B"></pre>

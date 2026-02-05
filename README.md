@@ -7,8 +7,10 @@ review differences side-by-side with highlighted changes.
 ## Approach
 - **Single-page UI** in plain HTML/CSS/JS for fast iteration and easy deployment.
 - **Node/Express API** powered by the official Pulse SDK for secure API calls and diff generation.
-- **Word-level diffing** using the `diff` library to highlight additions/removals.
-- **Debug-first workflow** with server/client logs enabled by default and easy toggles.
+- **Word and line diffing** using the `diff` library to highlight additions/removals.
+- **Optional structured extraction** using Pulse `structured_output` schemas for field-level diffs.
+- **Async extraction + polling** for large documents.
+- **Debug logs in terminal only** (toggle with `PULSE_DEBUG_LOGS`).
 
 ## Setup
 1. Install dependencies:
@@ -35,19 +37,19 @@ review differences side-by-side with highlighted changes.
 1. Upload **Document A** and **Document B**.
 2. Click **Compare Documents**.
 3. Review:
-   - **Summary stats** (insertions, removals, total diff parts)
+   - **Summary stats** (words/lines added, words/lines removed, diff chunks)
+   - **Insights** (numbers, dates, links, and more) for quick change scanning
    - **Side-by-side view** for easy change scanning
    - **Inline diff** for a combined view
    - **Extracted text** to validate Pulse output
-   - **Debug logs** for API request/response details
+   - **Structured output (optional)** for field-level extraction + diffing
 
 ## Design decisions & tradeoffs
 - **Server-side extraction & diffing** keeps API keys private and allows clean error
   handling.
-- **Configurable Pulse endpoints** because API routes can vary by plan/version.
-- **Polling support** handles async extraction workflows while keeping the UI responsive.
-- **Simple word-level diff** is fast and readable, but may not capture deeper structural
-  changes. This keeps performance predictable for large documents.
+- **Polling support** keeps large-file extraction responsive.
+- **Text diff is content-first** (word/line) and may not reflect layout-only changes.
+  For layout-aware comparisons, use structured extraction and field-level diffs.
 
 ## Example output
 ```
@@ -62,10 +64,8 @@ The agreement becomes <added>effective on March 1st</added> and
 ```
 
 ## What I’d improve with more time
-- Schema-based extraction for field-level diffs.
 - Visual PDF diff overlays for precise layout comparison.
-- Async job queue for very large documents.
-- Change categorization (formatting vs. semantic changes).
+- Deeper change categorization (formatting vs semantic changes).
 - Exportable diff reports (PDF/CSV).
 
 ## Troubleshooting
