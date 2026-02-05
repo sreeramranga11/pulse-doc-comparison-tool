@@ -52,6 +52,25 @@ review differences side-by-side with highlighted changes.
    - **Extracted text** to validate Pulse output
    - **Structured output (optional)** for field-level extraction + diffing
 
+## Testing
+Run all automated tests (mocked unit tests + optional integration tests):
+```bash
+npm test
+```
+
+What’s covered in `tests/`:
+- Core `/api/compare` flow (word + line diff output, counts, HTML rendering)
+- Large-file detection → per-file async vs sync selection
+- Async jobs that return URL-backed results (`is_url: true` + `url` → fetch `data.json`)
+- Structured extraction validation + structured diff output
+- Error handling cases (missing uploads, invalid schema JSON, unsupported file type, corrupted docs, polling timeout, simulated downtime)
+- OpenAI insights behavior (disabled/missing key, success path with stubbed response)
+
+Optional real-Pulse integration test:
+```bash
+RUN_INTEGRATION_TESTS=true PULSE_API_KEY=... npm test
+```
+
 ## Design decisions & tradeoffs
 - **Server-side extraction & diffing** keeps API keys private and allows clean error
   handling.
