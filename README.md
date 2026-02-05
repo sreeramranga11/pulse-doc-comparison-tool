@@ -4,16 +4,16 @@ A modern web interface for comparing two document versions using the Pulse API. 
 any Pulse-supported file type (PDF, Word, images, etc.), extract structured content, and
 review differences side-by-side with highlighted changes.
 
-## Approach
+## Brief explanation of the approach
 - **Single-page UI** in plain HTML/CSS/JS for fast iteration and easy deployment.
 - **Node/Express API** powered by the official Pulse SDK for secure API calls and diff generation.
 - **Word and line diffing** using the `diff` library to highlight additions/removals.
 - **Optional structured extraction** using Pulse `structured_output` schemas for field-level diffs.
 - **Optional AI insights** via OpenAI (server-side) to summarize changes and suggest reviewer checks.
-- **Async extraction + polling** for large documents.
+- **Async extraction + polling** for large documents. This happens automatically with no extra input from the user.
 - **Debug logs in terminal only** (toggle with `PULSE_DEBUG_LOGS`).
 
-## Setup
+## Setup / installation instructions
 1. Install dependencies:
    ```bash
    npm install
@@ -24,12 +24,12 @@ review differences side-by-side with highlighted changes.
    ```
 3. (Optional) Override Pulse endpoints or behavior:
    ```bash
-   PULSE_BASE_URL=https://api.runpulse.com
-   PULSE_DEBUG_LOGS=true
-   # Automatically switches to async when either upload is >= this threshold
-   PULSE_LARGE_FILE_THRESHOLD_MB=10
-   # Upload hard limit per file (multer); protects server memory
-   PULSE_MAX_UPLOAD_MB=50
+    PULSE_BASE_URL=https://api.runpulse.com
+    PULSE_DEBUG_LOGS=true
+    # Automatically switches to async when either upload is >= this threshold
+    PULSE_LARGE_FILE_THRESHOLD_MB=10
+    # Upload hard limit per file (multer); protects server memory
+    PULSE_MAX_UPLOAD_MB=50
    ```
 4. (Optional) Enable AI-powered insights (recommended):
    ```bash
@@ -43,16 +43,40 @@ review differences side-by-side with highlighted changes.
    ```
 6. Open `http://localhost:3000`.
 
-## Usage
+## Usage examples
+### Web UI (recommended)
 1. Upload **Document A** and **Document B**.
-2. Click **Compare Documents**.
-3. Review:
-   - **Summary stats** (words/lines added, words/lines removed, diff chunks)
-   - **Insights** (AI-generated) for quick change scanning
-   - **Side-by-side view** for easy change scanning
-   - **Inline diff** for a combined view
-   - **Extracted text** to validate Pulse output
-   - **Structured output (optional)** for field-level extraction + diffing
+2. Pick a **diff mode** (Word or Line).
+3. (Optional) Enable **Structured extraction** and provide a JSON schema (or use a preset).
+4. Click **Compare Documents**.
+
+### API (curl)
+Word diff:
+```bash
+curl -sS -X POST http://localhost:3000/api/compare \
+  -F left=@/path/to/a.pdf \
+  -F right=@/path/to/b.pdf \
+  -F diff_mode=words
+```
+
+Line diff:
+```bash
+curl -sS -X POST http://localhost:3000/api/compare \
+  -F left=@/path/to/a.pdf \
+  -F right=@/path/to/b.pdf \
+  -F diff_mode=lines
+```
+
+Structured extraction:
+```bash
+curl -sS -X POST http://localhost:3000/api/compare \
+  -F left=@/path/to/a.pdf \
+  -F right=@/path/to/b.pdf \
+  -F diff_mode=words \
+  -F structured_enabled=true \
+  -F structured_prompt='Extract invoice details; format dates as YYYY-MM-DD.' \
+  -F structured_schema='{"type":"object","properties":{"invoice_number":{"type":"string"},"total":{"type":"number"}},"required":["invoice_number","total"]}'
+```
 
 ## Testing
 Run all automated tests (mocked unit tests + optional integration tests):
@@ -77,28 +101,15 @@ RUN_INTEGRATION_TESTS=true PULSE_API_KEY=... npm test
 - **Server-side extraction & diffing** keeps API keys private and allows clean error
   handling.
 - **Polling support** keeps large-file extraction responsive.
-- **Auto async threshold:** The default `PULSE_LARGE_FILE_THRESHOLD_MB=10` is a practical rule-of-thumb (and what Pulse’s API assistant suggested as an “industry standard” cutoff) for switching to async when files get big; it also matches Pulse docs/examples that recommend direct upload for files under 10MB.
+- **Auto async threshold:** The default `PULSE_LARGE_FILE_THRESHOLD_MB=10` is a practical rule-of-thumb (and what Pulse’s API assistant suggested as an “industry standard” cutoff) for switching to async when files get big. It’s configurable because the “right” cutoff depends on your server memory, user network conditions, and document complexity.
 - **Text diff is content-first** (word/line) and may not reflect layout-only changes.
   For layout-aware comparisons, use structured extraction and field-level diffs.
 
 ## Example output
-```
-Summary
-- Insertions: 14
-- Removals: 9
-- Diff Parts: 87
 
-Sample inline diff
-The agreement becomes <added>effective on March 1st</added> and
-<removed>effective on February 15th</removed>.
-```
 
 ## What I’d improve with more time
 - Visual PDF diff overlays for precise layout comparison.
+- Cleaner word diff comparison. Right now, if there are multiple words changed all at once, each word is replaced with a new word in the inline diff.
 - Deeper change categorization (formatting vs semantic changes).
 - Exportable diff reports (PDF/CSV).
-
-## Troubleshooting
-- Ensure `PULSE_API_KEY` is set.
-- If your Pulse account uses different routes, update `PULSE_BASE_URL`.
-- Disable debug logs via `PULSE_DEBUG_LOGS=false`.
