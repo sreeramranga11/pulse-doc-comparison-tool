@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pulse Document Comparison</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <p class="badge">Pulse API</p>
+          <h1>Document Version Comparison</h1>
+          <p class="subhead">
+            Upload two documents to extract structured content with Pulse and review
+            differences side-by-side.
+          </p>
+        </div>
+        <div class="hero-card">
+          <p class="hero-title">Debug logging</p>
+          <p class="hero-text">
+            Debug logs are on by default. Toggle to hide client-side logs while
+            you test.
+          </p>
+          <label class="toggle">
+            <input id="debug-toggle" type="checkbox" checked />
+            <span>Show debug panel</span>
+          </label>
+        </div>
+      </header>
+
+      <section class="card">
+        <form id="compare-form" class="grid">
+          <div class="input-card">
+            <h2>Document A</h2>
+            <p>Contracts, PDFs, Word documents, or images.</p>
+            <input id="left-file" name="left" type="file" required />
+          </div>
+          <div class="input-card">
+            <h2>Document B</h2>
+            <p>Upload the revised version to compare changes.</p>
+            <input id="right-file" name="right" type="file" required />
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Compare Documents</button>
+            <button type="button" id="reset-btn" class="ghost">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="status" class="status hidden"></section>
+
+      <section class="results">
+        <div class="summary card">
+          <h2>Comparison Summary</h2>
+          <div class="summary-grid">
+            <div>
+              <h3>Insertions</h3>
+              <p id="summary-additions" class="summary-value">0</p>
+            </div>
+            <div>
+              <h3>Removals</h3>
+              <p id="summary-removals" class="summary-value">0</p>
+            </div>
+            <div>
+              <h3>Diff Parts</h3>
+              <p id="summary-total" class="summary-value">0</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card diff-card">
+          <h2>Side-by-side diff</h2>
+          <div class="diff-grid">
+            <div>
+              <h3>Document A</h3>
+              <div id="diff-left" class="diff-panel"></div>
+            </div>
+            <div>
+              <h3>Document B</h3>
+              <div id="diff-right" class="diff-panel"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card diff-card">
+          <h2>Inline diff</h2>
+          <div id="diff-inline" class="diff-panel"></div>
+        </div>
+
+        <details class="card">
+          <summary>Extracted text</summary>
+          <div class="diff-grid">
+            <pre id="extract-left" class="text-panel"></pre>
+            <pre id="extract-right" class="text-panel"></pre>
+          </div>
+        </details>
+
+        <div id="debug-panel" class="card debug">
+          <div class="debug-header">
+            <h2>Debug logs</h2>
+            <button type="button" id="clear-logs" class="ghost">Clear</button>
+          </div>
+          <pre id="debug-logs"></pre>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
