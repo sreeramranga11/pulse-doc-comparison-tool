@@ -10,16 +10,35 @@ const extractLeft = document.getElementById("extract-left");
 const extractRight = document.getElementById("extract-right");
 const structuredLeft = document.getElementById("structured-left");
 const structuredRight = document.getElementById("structured-right");
-const debugPanel = document.getElementById("debug-panel");
-const debugLogsEl = document.getElementById("debug-logs");
-const debugToggle = document.getElementById("debug-toggle");
-const clearLogs = document.getElementById("clear-logs");
 const resetBtn = document.getElementById("reset-btn");
+const resultsSection = document.getElementById("results");
+const navTabs = Array.from(document.querySelectorAll(".tabs-inner .tab"));
 
-const logClient = (message) => {
-  const timestamp = new Date().toISOString();
-  debugLogsEl.textContent += `[${timestamp}] ${message}\n`;
+const setTabsEnabled = (hasResults) => {
+  navTabs.forEach((tab) => {
+    const requiresResults = tab.dataset.requiresResults === "true";
+    if (!requiresResults) return;
+
+    if (hasResults) {
+      tab.classList.remove("is-disabled");
+      tab.setAttribute("aria-disabled", "false");
+      tab.removeAttribute("tabindex");
+      return;
+    }
+
+    tab.classList.add("is-disabled");
+    tab.setAttribute("aria-disabled", "true");
+    tab.setAttribute("tabindex", "-1");
+  });
 };
+
+navTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    if (tab.classList.contains("is-disabled")) return;
+    navTabs.forEach((t) => t.classList.remove("is-active"));
+    tab.classList.add("is-active");
+  });
+});
 
 const setStatus = (message, type = "info") => {
   statusEl.textContent = message;
@@ -45,24 +64,19 @@ const resetResults = () => {
   extractRight.textContent = "";
   structuredLeft.textContent = "";
   structuredRight.textContent = "";
+  if (resultsSection) {
+    resultsSection.dataset.hasResults = "false";
+  }
+  setTabsEnabled(false);
 };
 
-const toggleDebugPanel = () => {
-  debugPanel.style.display = debugToggle.checked ? "block" : "none";
-};
-
-debugToggle.addEventListener("change", toggleDebugPanel);
-clearLogs.addEventListener("click", () => {
-  debugLogsEl.textContent = "";
-});
 resetBtn.addEventListener("click", () => {
   form.reset();
   clearStatus();
   resetResults();
-  logClient("Reset comparison form and results.");
 });
 
-toggleDebugPanel();
+resetResults();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -81,7 +95,6 @@ form.addEventListener("submit", async (event) => {
   formData.append("right", rightFile);
 
   setStatus("Extracting documents with Pulse API...", "info");
-  logClient(`Submitting comparison for ${leftFile.name} and ${rightFile.name}`);
 
   try {
     const response = await fetch("/api/compare", {
@@ -113,13 +126,13 @@ form.addEventListener("submit", async (event) => {
       ? JSON.stringify(data.structuredOutput.right, null, 2)
       : "No structured output returned.";
 
-    if (data.debug?.length) {
-      data.debug.forEach((entry) => logClient(entry));
+    if (resultsSection) {
+      resultsSection.dataset.hasResults = "true";
     }
-
+    setTabsEnabled(true);
     setStatus("Comparison complete. Review the highlighted differences below.");
+    document.getElementById("results")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     setStatus(error.message, "error");
-    logClient(`Error: ${error.message}`);
   }
 });

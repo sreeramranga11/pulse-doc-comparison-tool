@@ -7,118 +7,160 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Inria+Serif:wght@400;600;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <header class="navbar">
+      <div class="navbar-inner">
+        <a class="brand" href="/" aria-label="Pulse Document Comparison home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M4 4h3v3H4V4Zm5 0h3v3H9V4Zm5 0h2v3h-2V4ZM4 9h3v3H4V9Zm5 0h3v3H9V9Zm5 0h2v3h-2V9ZM4 14h3v2H4v-2Zm5 0h3v2H9v-2Zm5 0h2v2h-2v-2Z"
+                fill="currentColor"
+              />
+            </svg>
+          </span>
+          <span class="brand-name">Pulse</span>
+          <span class="brand-subtitle">Document Comparison</span>
+        </a>
+
+        <div class="nav-actions"></div>
+      </div>
+
+      <div class="tabs-inner" role="navigation" aria-label="Sections">
+        <a class="tab is-active" href="#upload" id="tab-upload">Upload</a>
+        <a class="tab" href="#side-by-side" id="tab-side" data-requires-results="true">Side-by-side</a>
+        <a class="tab" href="#inline" id="tab-inline" data-requires-results="true">Inline diff</a>
+      </div>
+    </header>
+
     <main class="page">
-      <header class="hero">
-        <div>
-          <p class="badge">Pulse API</p>
-          <h1>Document Version Comparison</h1>
-          <p class="subhead">
-            Upload two documents to extract structured content with Pulse and review
-            differences side-by-side.
-          </p>
-        </div>
-        <div class="hero-card">
-          <p class="hero-title">Debug logging</p>
-          <p class="hero-text">
-            Debug logs are on by default. Toggle to hide client-side logs while
-            you test.
-          </p>
-          <label class="toggle">
-            <input id="debug-toggle" type="checkbox" checked />
-            <span>Show debug panel</span>
-          </label>
-        </div>
-      </header>
+      <div class="layout">
+        <div class="content">
+          <header class="page-header">
+            <p class="eyebrow">Pulse API</p>
+            <h1>Document Version Comparison</h1>
+            <p class="subhead">
+              Upload two documents to extract structured content with Pulse and review differences
+              side-by-side.
+            </p>
+          </header>
 
-      <section class="card">
-        <form id="compare-form" class="grid">
-          <div class="input-card">
-            <h2>Document A</h2>
-            <p>Contracts, PDFs, Word documents, or images.</p>
-            <input id="left-file" name="left" type="file" required />
-          </div>
-          <div class="input-card">
-            <h2>Document B</h2>
-            <p>Upload the revised version to compare changes.</p>
-            <input id="right-file" name="right" type="file" required />
-          </div>
-          <div class="actions">
-            <button type="submit" class="primary">Compare Documents</button>
-            <button type="button" id="reset-btn" class="ghost">Reset</button>
-          </div>
-        </form>
-      </section>
-
-      <section id="status" class="status hidden"></section>
-
-      <section class="results">
-        <div class="summary card">
-          <h2>Comparison Summary</h2>
-          <div class="summary-grid">
-            <div>
-              <h3>Insertions</h3>
-              <p id="summary-additions" class="summary-value">0</p>
+          <section class="card" id="upload" aria-label="Upload documents">
+            <div class="card-header">
+              <div>
+                <h2>Upload</h2>
+                <p class="muted">PDFs, Word docs, images, and other Pulse-supported formats.</p>
+              </div>
             </div>
-            <div>
-              <h3>Removals</h3>
-              <p id="summary-removals" class="summary-value">0</p>
+
+            <form id="compare-form" class="grid">
+              <div class="input-card">
+                <h3>Document A</h3>
+                <p class="muted">Original version.</p>
+                <input id="left-file" name="left" type="file" required />
+              </div>
+              <div class="input-card">
+                <h3>Document B</h3>
+                <p class="muted">Revised version.</p>
+                <input id="right-file" name="right" type="file" required />
+              </div>
+              <div class="actions">
+                <button type="submit" class="primary">Compare Documents</button>
+                <button type="button" id="reset-btn" class="ghost">Reset</button>
+              </div>
+            </form>
+          </section>
+
+          <section id="status" class="status hidden" role="status" aria-live="polite"></section>
+
+          <section class="results" id="results" data-has-results="false" aria-label="Comparison results">
+            <div class="empty-state" id="empty-state">
+              <h2>Results</h2>
+              <p class="muted">
+                Upload Document A and Document B, then click <strong>Compare Documents</strong> to
+                generate a diff.
+              </p>
             </div>
-            <div>
-              <h3>Diff Parts</h3>
-              <p id="summary-total" class="summary-value">0</p>
+
+            <div class="results-grid" aria-hidden="false">
+              <div class="summary card" id="summary">
+                <div class="card-header">
+                  <div>
+                    <h2>Summary</h2>
+                    <p class="muted">Quick stats for the extracted text diff.</p>
+                  </div>
+                </div>
+                <div class="summary-grid">
+                  <div class="stat">
+                    <h3>Insertions</h3>
+                    <p id="summary-additions" class="summary-value">0</p>
+                  </div>
+                  <div class="stat">
+                    <h3>Removals</h3>
+                    <p id="summary-removals" class="summary-value">0</p>
+                  </div>
+                  <div class="stat">
+                    <h3>Diff Parts</h3>
+                    <p id="summary-total" class="summary-value">0</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card diff-card" id="side-by-side">
+                <div class="card-header">
+                  <div>
+                    <h2>Side-by-side</h2>
+                    <p class="muted">Additions and removals highlighted per document.</p>
+                  </div>
+                </div>
+                <div class="diff-grid">
+                  <div>
+                    <h3>Document A</h3>
+                    <div id="diff-left" class="diff-panel" aria-label="Document A diff"></div>
+                  </div>
+                  <div>
+                    <h3>Document B</h3>
+                    <div id="diff-right" class="diff-panel" aria-label="Document B diff"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card diff-card" id="inline">
+                <div class="card-header">
+                  <div>
+                    <h2>Inline</h2>
+                    <p class="muted">Combined view of additions and removals.</p>
+                  </div>
+                </div>
+                <div id="diff-inline" class="diff-panel" aria-label="Inline diff"></div>
+              </div>
+
+              <details class="card" id="extracted">
+                <summary>Extracted text</summary>
+                <div class="diff-grid">
+                  <pre id="extract-left" class="text-panel" aria-label="Extracted text for Document A"></pre>
+                  <pre id="extract-right" class="text-panel" aria-label="Extracted text for Document B"></pre>
+                </div>
+              </details>
+
+              <details class="card" id="structured">
+                <summary>Structured output (optional)</summary>
+                <div class="diff-grid">
+                  <pre id="structured-left" class="text-panel" aria-label="Structured output for Document A"></pre>
+                  <pre id="structured-right" class="text-panel" aria-label="Structured output for Document B"></pre>
+                </div>
+              </details>
+
             </div>
-          </div>
+          </section>
         </div>
 
-        <div class="card diff-card">
-          <h2>Side-by-side diff</h2>
-          <div class="diff-grid">
-            <div>
-              <h3>Document A</h3>
-              <div id="diff-left" class="diff-panel"></div>
-            </div>
-            <div>
-              <h3>Document B</h3>
-              <div id="diff-right" class="diff-panel"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card diff-card">
-          <h2>Inline diff</h2>
-          <div id="diff-inline" class="diff-panel"></div>
-        </div>
-
-        <details class="card">
-          <summary>Extracted text</summary>
-          <div class="diff-grid">
-            <pre id="extract-left" class="text-panel"></pre>
-            <pre id="extract-right" class="text-panel"></pre>
-          </div>
-        </details>
-
-        <details class="card">
-          <summary>Structured output (optional)</summary>
-          <div class="diff-grid">
-            <pre id="structured-left" class="text-panel"></pre>
-            <pre id="structured-right" class="text-panel"></pre>
-          </div>
-        </details>
-
-        <div id="debug-panel" class="card debug">
-          <div class="debug-header">
-            <h2>Debug logs</h2>
-            <button type="button" id="clear-logs" class="ghost">Clear</button>
-          </div>
-          <pre id="debug-logs"></pre>
-        </div>
-      </section>
+      </div>
     </main>
 
     <script src="app.js"></script>
