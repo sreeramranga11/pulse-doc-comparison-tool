@@ -27,6 +27,12 @@ const structuredSchemaEl = document.getElementById("structured-schema");
 
 const insightsAddedEl = document.getElementById("insights-added");
 const insightsRemovedEl = document.getElementById("insights-removed");
+const insightsSummaryEl = document.getElementById("insights-summary");
+const insightsMetaEl = document.getElementById("insights-meta");
+const insightsCategoriesEl = document.getElementById("insights-categories");
+const insightsChecksEl = document.getElementById("insights-checks");
+const insightsRisksEl = document.getElementById("insights-risks");
+const insightsConfidenceEl = document.getElementById("insights-confidence");
 const structuredDiffCountEl = document.getElementById("structured-diff-count");
 const structuredDiffRowsEl = document.getElementById("structured-diff-rows");
 
@@ -99,6 +105,8 @@ const getHeaderOffset = () => {
 
 const SECTION_STEPS = [
   { sectionId: "upload", tabId: "tab-upload", requiresResults: false },
+  { sectionId: "summary", tabId: "tab-summary", requiresResults: true },
+  { sectionId: "insights", tabId: "tab-insights", requiresResults: true },
   { sectionId: "inline", tabId: "tab-inline", requiresResults: true },
   { sectionId: "side-by-side", tabId: "tab-side", requiresResults: true }
 ];
@@ -243,6 +251,12 @@ const resetResults = () => {
   structuredRight.textContent = "";
   if (insightsAddedEl) insightsAddedEl.innerHTML = "";
   if (insightsRemovedEl) insightsRemovedEl.innerHTML = "";
+  if (insightsSummaryEl) insightsSummaryEl.textContent = "";
+  if (insightsMetaEl) insightsMetaEl.textContent = "";
+  if (insightsCategoriesEl) insightsCategoriesEl.innerHTML = "";
+  if (insightsChecksEl) insightsChecksEl.innerHTML = "";
+  if (insightsRisksEl) insightsRisksEl.innerHTML = "";
+  if (insightsConfidenceEl) insightsConfidenceEl.innerHTML = "";
   if (structuredDiffCountEl) structuredDiffCountEl.textContent = "0 changes";
   if (structuredDiffRowsEl) structuredDiffRowsEl.innerHTML = "";
   if (resultsSection) {
@@ -354,18 +368,24 @@ form.addEventListener("submit", async (event) => {
       ? JSON.stringify(data.structuredOutput.right, null, 2)
       : "No structured output returned.";
 
-    const renderInsights = (target, insight) => {
+    const renderEmptyKv = (target, message) => {
+      if (!target) return;
       target.innerHTML = "";
-      const entries = Object.entries(insight || {}).filter(([, v]) => v?.count > 0);
-      if (!entries.length) {
-        const div = document.createElement("div");
-        div.className = "kv";
-        div.textContent = "No notable changes detected in this category.";
-        target.appendChild(div);
+      const div = document.createElement("div");
+      div.className = "kv";
+      div.textContent = message;
+      target.appendChild(div);
+    };
+
+    const renderHighlights = (target, highlights, emptyMessage) => {
+      if (!target) return;
+      target.innerHTML = "";
+      const items = Array.isArray(highlights) ? highlights : [];
+      if (!items.length) {
+        renderEmptyKv(target, emptyMessage);
         return;
       }
-
-      entries.forEach(([key, value]) => {
+      items.forEach((h) => {
         const item = document.createElement("div");
         item.className = "kv";
 
@@ -373,19 +393,15 @@ form.addEventListener("submit", async (event) => {
         row.className = "kv-row";
 
         const label = document.createElement("strong");
-        label.textContent = key;
-
-        const count = document.createElement("span");
-        count.textContent = `${value.count}`;
+        label.textContent = h?.title || "Highlight";
 
         row.appendChild(label);
-        row.appendChild(count);
         item.appendChild(row);
 
-        if (value.unique?.length) {
+        if (h?.evidence) {
           const samples = document.createElement("div");
           samples.className = "samples";
-          samples.textContent = value.unique.join(" · ");
+          samples.textContent = h.evidence;
           item.appendChild(samples);
         }
 
@@ -393,8 +409,131 @@ form.addEventListener("submit", async (event) => {
       });
     };
 
-    if (insightsAddedEl) renderInsights(insightsAddedEl, data.insights?.added);
-    if (insightsRemovedEl) renderInsights(insightsRemovedEl, data.insights?.removed);
+    const renderCategories = (target, categories) => {
+      if (!target) return;
+      target.innerHTML = "";
+      const items = Array.isArray(categories) ? categories : [];
+      if (!items.length) {
+        renderEmptyKv(target, "No categories detected.");
+        return;
+      }
+      items.forEach((c) => {
+        const item = document.createElement("div");
+        item.className = "kv";
+
+        const row = document.createElement("div");
+        row.className = "kv-row";
+
+        const label = document.createElement("strong");
+        label.textContent = c?.category ? c.category.replaceAll("_", " ") : "other";
+
+        row.appendChild(label);
+        item.appendChild(row);
+
+        if (c?.summary) {
+          const samples = document.createElement("div");
+          samples.className = "samples";
+          samples.textContent = c.summary;
+          item.appendChild(samples);
+        }
+
+        target.appendChild(item);
+      });
+    };
+
+    const renderChecks = (target, checks) => {
+      if (!target) return;
+      target.innerHTML = "";
+      const items = Array.isArray(checks) ? checks : [];
+      if (!items.length) {
+        renderEmptyKv(target, "No suggested checks.");
+        return;
+      }
+      items.forEach((text) => {
+        const item = document.createElement("div");
+        item.className = "kv";
+        item.textContent = text;
+        target.appendChild(item);
+      });
+    };
+
+    const renderRisks = (target, risks) => {
+      if (!target) return;
+      target.innerHTML = "";
+      const items = Array.isArray(risks) ? risks : [];
+      if (!items.length) {
+        renderEmptyKv(target, "No risks flagged.");
+        return;
+      }
+      items.forEach((r) => {
+        const level = (r?.severity || "unknown").toString().toLowerCase();
+        const item = document.createElement("div");
+        item.className = `kv kv-risk kv-risk-${level}`;
+
+        const row = document.createElement("div");
+        row.className = "kv-row";
+
+        const label = document.createElement("strong");
+        label.textContent = r?.message || "Risk";
+
+        const sev = document.createElement("span");
+        sev.textContent = r?.severity || "";
+
+        row.appendChild(label);
+        row.appendChild(sev);
+        item.appendChild(row);
+
+        target.appendChild(item);
+      });
+    };
+
+    const renderConfidence = (target, confidence) => {
+      if (!target) return;
+      target.innerHTML = "";
+      const item = document.createElement("div");
+      const level = (confidence || "unknown").toString().toLowerCase();
+      item.className = `kv kv-confidence kv-confidence-${level}`;
+      item.textContent = confidence ? String(confidence) : "unknown";
+      target.appendChild(item);
+    };
+
+    const insights = data.insights || {};
+    const result = insights?.result || null;
+    if (!insights?.enabled || !result) {
+      if (insightsSummaryEl) {
+        insightsSummaryEl.textContent = insights?.error
+          ? `Insights unavailable: ${insights.error}`
+          : "Insights unavailable.";
+      }
+      if (insightsMetaEl) {
+        insightsMetaEl.textContent =
+          insights?.provider === "openai" && !insights?.enabled
+            ? "Set OPENAI_API_KEY in .env to enable AI-powered insights."
+            : "";
+      }
+      renderEmptyKv(insightsAddedEl, "No insights.");
+      renderEmptyKv(insightsRemovedEl, "No insights.");
+      renderEmptyKv(insightsCategoriesEl, "No insights.");
+      renderEmptyKv(insightsChecksEl, "No insights.");
+      renderEmptyKv(insightsRisksEl, "No insights.");
+      renderConfidence(insightsConfidenceEl, "");
+    } else {
+      if (insightsSummaryEl) insightsSummaryEl.textContent = result.overall_summary || "";
+      if (insightsMetaEl) {
+        const meta = [];
+        if (insights.provider) meta.push(insights.provider);
+        if (insights.model) meta.push(insights.model);
+        if (result.confidence) meta.push(`confidence: ${result.confidence}`);
+        insightsMetaEl.textContent = meta.join(" • ");
+      }
+
+      renderHighlights(insightsAddedEl, result.added_highlights, "No added highlights.");
+      renderHighlights(insightsRemovedEl, result.removed_highlights, "No removed highlights.");
+      renderCategories(insightsCategoriesEl, result.change_categories);
+      renderChecks(insightsChecksEl, result.suggested_checks);
+      renderRisks(insightsRisksEl, result.risks);
+      renderConfidence(insightsConfidenceEl, result.confidence);
+    }
 
     const structuredTotal = Number(data.structuredDiff?.total || 0);
     if (structuredDiffCountEl) {

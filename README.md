@@ -9,6 +9,7 @@ review differences side-by-side with highlighted changes.
 - **Node/Express API** powered by the official Pulse SDK for secure API calls and diff generation.
 - **Word and line diffing** using the `diff` library to highlight additions/removals.
 - **Optional structured extraction** using Pulse `structured_output` schemas for field-level diffs.
+- **Optional AI insights** via OpenAI (server-side) to summarize changes and suggest reviewer checks.
 - **Async extraction + polling** for large documents.
 - **Debug logs in terminal only** (toggle with `PULSE_DEBUG_LOGS`).
 
@@ -27,18 +28,24 @@ review differences side-by-side with highlighted changes.
    PULSE_DEBUG_LOGS=true
    PULSE_USE_ASYNC=true
    ```
-4. Start the server:
+4. (Optional) Enable AI-powered insights (recommended):
+   ```bash
+   OPENAI_API_KEY=your_openai_key_here
+   # Optional:
+   OPENAI_MODEL=gpt-4o-mini
+   ```
+5. Start the server:
    ```bash
    npm start
    ```
-5. Open `http://localhost:3000`.
+6. Open `http://localhost:3000`.
 
 ## Usage
 1. Upload **Document A** and **Document B**.
 2. Click **Compare Documents**.
 3. Review:
    - **Summary stats** (words/lines added, words/lines removed, diff chunks)
-   - **Insights** (numbers, dates, links, and more) for quick change scanning
+   - **Insights** (AI-generated) for quick change scanning
    - **Side-by-side view** for easy change scanning
    - **Inline diff** for a combined view
    - **Extracted text** to validate Pulse output

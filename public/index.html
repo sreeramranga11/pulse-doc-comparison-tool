@@ -33,6 +33,8 @@
 
       <div class="tabs-inner" role="navigation" aria-label="Sections">
         <a class="tab is-active" href="#upload" id="tab-upload">Upload</a>
+        <a class="tab" href="#summary" id="tab-summary" data-requires-results="true">Summary</a>
+        <a class="tab" href="#insights" id="tab-insights" data-requires-results="true">Insights</a>
         <a class="tab" href="#inline" id="tab-inline" data-requires-results="true">Inline diff</a>
         <a class="tab" href="#side-by-side" id="tab-side" data-requires-results="true">Side-by-side</a>
       </div>
@@ -46,7 +48,6 @@
             <h1>Document Version Comparison</h1>
             <p class="subhead">
               Upload two documents to extract structured content with Pulse and review differences
-              side-by-side.
             </p>
           </header>
 
@@ -179,6 +180,7 @@
                     <p class="muted">What changed (numbers, dates, links, and more).</p>
                   </div>
                 </div>
+                <div class="insights-summary kv" id="insights-summary" aria-live="polite"></div>
                 <div class="insights-grid">
                   <div class="insight">
                     <div class="insight-title">Added</div>
@@ -187,6 +189,26 @@
                   <div class="insight">
                     <div class="insight-title">Removed</div>
                     <div class="insight-list" id="insights-removed"></div>
+                  </div>
+                </div>
+                <div class="insights-grid insights-grid-details">
+                  <div class="insight">
+                    <div class="insight-title">Categories</div>
+                    <div class="insight-list" id="insights-categories"></div>
+                  </div>
+                  <div class="insight">
+                    <div class="insight-title">Suggested checks</div>
+                    <div class="insight-list" id="insights-checks"></div>
+                  </div>
+                </div>
+                <div class="insights-grid insights-grid-details">
+                  <div class="insight">
+                    <div class="insight-title">Risks</div>
+                    <div class="insight-list" id="insights-risks"></div>
+                  </div>
+                  <div class="insight">
+                    <div class="insight-title">Confidence</div>
+                    <div class="insight-list" id="insights-confidence"></div>
                   </div>
                 </div>
               </div>

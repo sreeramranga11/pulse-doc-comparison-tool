@@ -3,11 +3,16 @@ import multer from "multer";
 import dotenv from "dotenv";
 import { diffWordsWithSpace, diffLines } from "diff";
 import { PulseClient, PulseError } from "pulse-ts-sdk";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 dotenv.config();
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config = {
   port: process.env.PORT || 3000,
@@ -17,6 +22,13 @@ const config = {
   pollIntervalMs: Number(process.env.PULSE_POLL_INTERVAL_MS || 2000),
   pollTimeoutMs: Number(process.env.PULSE_POLL_TIMEOUT_MS || 60000),
   useAsync: (process.env.PULSE_USE_ASYNC || "true").toLowerCase() === "true"
+};
+
+const openaiConfig = {
+  apiKey: process.env.OPENAI_API_KEY || "",
+  model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  enabled: (process.env.OPENAI_INSIGHTS_ENABLED || "true").toLowerCase() === "true",
+  timeoutMs: Number(process.env.OPENAI_TIMEOUT_MS || 12000)
 };
 
 const logDebug = (...messages) => {
@@ -37,6 +49,7 @@ const escapeHtml = (value) => {
 };
 
 const WORD_RE = /[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*/gu;
+const LETTER_RE = /\p{L}/u;
 const countWords = (value) => {
   if (!value) return 0;
   return (String(value).match(WORD_RE) || []).length;
@@ -271,7 +284,7 @@ const parseStructuredOutput = (req) => {
     schema,
     schemaPrompt: schemaPrompt || undefined
   };
-};
+  };
 
 const diffStructured = (left, right) => {
   const changes = [];
@@ -324,47 +337,252 @@ const diffStructured = (left, right) => {
   return changes;
 };
 
-const analyzeDiff = (diffParts) => {
-  const addedText = diffParts.filter((part) => part.added).map((part) => part.value).join("");
-  const removedText = diffParts.filter((part) => part.removed).map((part) => part.value).join("");
+const insightsTemplatePath = path.join(__dirname, "prompts", "insights_prompt.jinja");
+let insightsPromptTemplate = "";
+try {
+  insightsPromptTemplate = fs.readFileSync(insightsTemplatePath, "utf8");
+} catch (error) {
+  insightsPromptTemplate = "";
+  logDebug("Unable to read insights prompt template", {
+    path: insightsTemplatePath,
+    message: error?.message || String(error)
+  });
+}
 
-  const patterns = {
-    numbers: /\b\d+(?:[.,]\d+)*\b/g,
-    dates:
-      /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,)?\s+\d{4})\b/gi,
-    money: /(?:[$€£]\s?\d+(?:[.,]\d+)?|\b\d+(?:[.,]\d+)?\s?(?:usd|eur|gbp|dollars?)\b)/gi,
-    percent: /\b\d+(?:\.\d+)?%\b/g,
-    emails: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-    urls: /\bhttps?:\/\/[^\s)]+/gi
-  };
+const renderTemplate = (template, variables) => {
+  const safeTemplate = String(template || "");
+  return safeTemplate.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = variables?.[key];
+    return value == null ? "" : String(value);
+  });
+};
 
-  const summarizeMatches = (text, regex) => {
-    const matches = text.match(regex) || [];
-    const uniq = Array.from(new Set(matches.map((m) => m.trim()).filter(Boolean)));
-    return {
-      count: matches.length,
-      unique: uniq.slice(0, 8)
-    };
-  };
+const truncateText = (value, maxLen) => {
+  const text = String(value ?? "");
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen - 1)}…`;
+};
+
+const collapseWhitespace = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+
+const collectDiffSnippets = (diffParts, { maxSnippets = 12, maxLen = 220 } = {}) => {
+  const seen = new Set();
+  const added = [];
+  const removed = [];
+
+  for (const part of diffParts) {
+    const bucket = part.added ? added : part.removed ? removed : null;
+    if (!bucket) continue;
+    if (bucket.length >= maxSnippets) continue;
+    const cleaned = collapseWhitespace(part.value);
+    if (!cleaned || cleaned.length < 4) continue;
+    const snippet = truncateText(cleaned, maxLen);
+    const key = snippet.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    bucket.push(snippet);
+    if (added.length >= maxSnippets && removed.length >= maxSnippets) break;
+  }
+
+  return { added, removed };
+};
+
+const buildInsightsInput = ({ leftName, rightName, summary, diffParts, structuredDiff }) => {
+  const snippets = collectDiffSnippets(diffParts);
+  const structuredSample = (structuredDiff || []).slice(0, 30).map((c) => ({
+    path: c.path || "",
+    type: c.type || "changed",
+    left: typeof c.left === "string" ? truncateText(c.left, 120) : c.left,
+    right: typeof c.right === "string" ? truncateText(c.right, 120) : c.right
+  }));
 
   return {
-    added: {
-      numbers: summarizeMatches(addedText, patterns.numbers),
-      dates: summarizeMatches(addedText, patterns.dates),
-      money: summarizeMatches(addedText, patterns.money),
-      percent: summarizeMatches(addedText, patterns.percent),
-      emails: summarizeMatches(addedText, patterns.emails),
-      urls: summarizeMatches(addedText, patterns.urls)
+    meta: {
+      left_name: leftName || "Document A",
+      right_name: rightName || "Document B",
+      diff_mode: summary?.diffMode || "words",
+      unit: summary?.unit || "words",
+      additions: Number(summary?.additions || 0),
+      removals: Number(summary?.removals || 0),
+      diff_chunks: Number(summary?.totalParts || 0),
+      structured_changes: Number(structuredDiff?.length || 0)
     },
-    removed: {
-      numbers: summarizeMatches(removedText, patterns.numbers),
-      dates: summarizeMatches(removedText, patterns.dates),
-      money: summarizeMatches(removedText, patterns.money),
-      percent: summarizeMatches(removedText, patterns.percent),
-      emails: summarizeMatches(removedText, patterns.emails),
-      urls: summarizeMatches(removedText, patterns.urls)
-    }
+    excerpts: {
+      added: snippets.added,
+      removed: snippets.removed
+    },
+    structured_diff_sample: structuredSample
   };
+};
+
+const OPENAI_INSIGHTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    overall_summary: {
+      type: "string",
+      description: "Concise, high-signal summary of what changed."
+    },
+    added_highlights: {
+      type: "array",
+      description: "Key additions found in the diff excerpts.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          evidence: {
+            type: "string",
+            description: "Quote or paraphrase grounded in provided excerpts."
+          }
+        },
+        required: ["title", "evidence"]
+      }
+    },
+    removed_highlights: {
+      type: "array",
+      description: "Key removals found in the diff excerpts.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          evidence: { type: "string" }
+        },
+        required: ["title", "evidence"]
+      }
+    },
+    change_categories: {
+      type: "array",
+      description: "High-level categorization of changes.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          category: {
+            type: "string",
+            enum: ["numbers", "dates", "money", "links", "people", "organizations", "sections", "formatting", "other"]
+          },
+          summary: { type: "string" }
+        },
+        required: ["category", "summary"]
+      }
+    },
+    risks: {
+      type: "array",
+      description: "Potential risks or regressions implied by changes (if any).",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          severity: { type: "string", enum: ["Low", "Medium", "High"] },
+          message: { type: "string" }
+        },
+        required: ["severity", "message"]
+      }
+    },
+    suggested_checks: {
+      type: "array",
+      description: "Concrete checks a reviewer should perform.",
+      items: { type: "string" }
+    },
+    confidence: { type: "string", enum: ["Low", "Medium", "High"] }
+  },
+  required: [
+    "overall_summary",
+    "added_highlights",
+    "removed_highlights",
+    "change_categories",
+    "risks",
+    "suggested_checks",
+    "confidence"
+  ]
+};
+
+const extractOpenAIOutputText = (payload) => {
+  if (!payload) return "";
+  if (typeof payload.output_text === "string") return payload.output_text;
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  const chunks = [];
+  for (const item of output) {
+    const content = item?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (typeof part?.text === "string") chunks.push(part.text);
+      if (typeof part?.content === "string") chunks.push(part.content);
+    }
+  }
+  return chunks.join("\n").trim();
+};
+
+const generateInsightsWithOpenAI = async (insightsInput) => {
+  if (!openaiConfig.enabled) {
+    return { enabled: false, provider: "openai", error: "Insights disabled by OPENAI_INSIGHTS_ENABLED." };
+  }
+  if (!openaiConfig.apiKey) {
+    return { enabled: false, provider: "openai", error: "Missing OPENAI_API_KEY." };
+  }
+  if (!insightsPromptTemplate) {
+    return { enabled: false, provider: "openai", error: "Missing insights prompt template file." };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openaiConfig.timeoutMs);
+  try {
+    const inputJson = JSON.stringify(insightsInput, null, 2);
+    const prompt = renderTemplate(insightsPromptTemplate, { input_json: inputJson });
+
+    logDebug("Generating OpenAI insights", { model: openaiConfig.model });
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiConfig.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: openaiConfig.model,
+        input: prompt,
+        temperature: 0.2,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "document_diff_insights",
+            strict: true,
+            schema: OPENAI_INSIGHTS_SCHEMA
+          }
+        }
+      }),
+      signal: controller.signal
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail =
+        payload?.error?.message ||
+        payload?.message ||
+        `OpenAI request failed (${response.status} ${response.statusText})`;
+      throw new Error(detail);
+    }
+
+    const text = extractOpenAIOutputText(payload);
+    const parsed = typeof payload?.output_parsed === "object" ? payload.output_parsed : JSON.parse(text);
+
+    return {
+      enabled: true,
+      provider: "openai",
+      model: openaiConfig.model,
+      result: parsed
+    };
+  } catch (error) {
+    const message =
+      error?.name === "AbortError"
+        ? `Insights timed out after ${openaiConfig.timeoutMs}ms.`
+        : error?.message || "OpenAI insights failed.";
+    logDebug("OpenAI insights failed", { message });
+    return { enabled: false, provider: "openai", error: message };
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 const countLogicalLines = (value) => {
@@ -440,6 +658,22 @@ app.post(
           ? diffStructured(leftResult.structuredOutput, rightResult.structuredOutput)
           : [];
 
+      const insightsInput = buildInsightsInput({
+        leftName: leftFile.originalname,
+        rightName: rightFile.originalname,
+        summary: {
+          additions,
+          removals,
+          totalParts: diffParts.length,
+          diffMode,
+          unit: diffMode === "lines" ? "lines" : "words"
+        },
+        diffParts,
+        structuredDiff
+      });
+
+      const insights = await generateInsightsWithOpenAI(insightsInput);
+
       res.json({
         summary: {
           additions,
@@ -454,7 +688,7 @@ app.post(
           left: leftResult.text,
           right: rightResult.text
         },
-        insights: analyzeDiff(diffParts),
+        insights,
         structuredOutput: {
           left: leftResult.structuredOutput || null,
           right: rightResult.structuredOutput || null
